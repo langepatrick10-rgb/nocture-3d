@@ -1,0 +1,75 @@
+{
+  "name": "piano3d",
+  "private": true,
+  "description": "Nocture : 3D — play and practice piano in 3D with MIDI files",
+  "author": "Patrick",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "electron/main.mjs",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "app": "npm run build && electron .",
+    "app:dev": "electron .",
+    "dist": "npm run build && electron-builder --win"
+  },
+  "dependencies": {
+    "@react-three/drei": "^10.7.8",
+    "@react-three/fiber": "^9.7.0",
+    "@react-three/postprocessing": "^3.1.1",
+    "@tonejs/midi": "^2.0.28",
+    "onnxruntime-web": "^1.27.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "three": "^0.186.0",
+    "tone": "^15.1.22",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@types/three": "^0.186.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "electron": "^38.8.6",
+    "electron-builder": "^26.15.3",
+    "oxlint": "^1.81.0",
+    "typescript": "~6.0.2",
+    "vite": "^8.3.0"
+  },
+  "build": {
+    "appId": "local.nocture3d.app",
+    "productName": "Nocture 3D",
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "C:/Users/patri/AppData/Local/Nocture3D-build",
+      "buildResources": "build"
+    },
+    "win": {
+      "icon": "build/icon.ico",
+      "target": [
+        "nsis"
+      ],
+      "artifactName": "Nocture-3D-Setup.exe",
+      "signExecutable": false
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": false,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Nocture 3D",
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false,
+      "installerHeaderIcon": "build/icon.ico"
+    }
+  }
+}

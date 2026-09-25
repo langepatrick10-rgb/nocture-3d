@@ -1,0 +1,4 @@
+MIDI performances in this folder come from Bernd Krueger’s Classical Piano
+Midi Page (http://piano-midi.de/) and are licensed CC BY-NC-SA 3.0.
+
+The musical works themselves are in the public domain.

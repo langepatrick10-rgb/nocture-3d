@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Nocture : 3D</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #07080c;
+        overflow: hidden;
+        user-select: none;
+      }
+      .art {
+        position: absolute;
+        inset: 0;
+        background: #07080c url('./cover.png') center / cover no-repeat;
+      }
+      .art::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(
+          to top,
+          rgba(7, 8, 12, 0.9) 0%,
+          rgba(7, 8, 12, 0.18) 48%,
+          rgba(7, 8, 12, 0.42) 100%
+        );
+      }
+      .copy {
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 52px;
+        z-index: 1;
+        text-align: center;
+        color: #ffe7a8;
+      }
+      .copy small {
+        display: block;
+        font-family: 'Segoe UI', sans-serif;
+        letter-spacing: 0.24em;
+        text-transform: uppercase;
+        font-size: 11px;
+        color: #e4c15c;
+        margin-bottom: 10px;
+      }
+      .copy strong {
+        font-family: Georgia, 'Times New Roman', serif;
+        font-size: 44px;
+        font-weight: 500;
+      }
+      .bar {
+        width: 196px;
+        height: 2px;
+        margin: 22px auto 0;
+        overflow: hidden;
+        background: rgba(228, 193, 92, 0.2);
+      }
+      .bar span {
+        display: block;
+        width: 40%;
+        height: 100%;
+        background: #e4c15c;
+        animation: slide 1.15s ease-in-out infinite;
+      }
+      @keyframes slide {
+        0% {
+          transform: translateX(-120%);
+        }
+        100% {
+          transform: translateX(340%);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="art"></div>
+    <div class="copy">
+      <small>Concert grand</small>
+      <strong>Nocture : 3D</strong>
+      <div class="bar"><span></span></div>
+    </div>
+  </body>
+</html>

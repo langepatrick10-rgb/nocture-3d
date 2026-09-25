@@ -1,0 +1,13 @@
+Concert grand (default): Amatsukast “Grand Piano” (Yamaha C6X), CC BY-NC-SA 4.0.
+https://sketchfab.com/3d-models/grand-piano-159b0bd1ef114b32888d9d39885cac68
+Source files live in /Piano3D Imports and are served as /models/grand-piano.glb.
+
+Marble skin (same author, unused until swap): grand_piano_marble.glb
+https://sketchfab.com/3d-models/grand-piano-marble-8d4142b2c2d94dc7a314764f621845c6
+
+keyboard.glb is the MIT-licensed piano key / chassis model from
+https://github.com/dr-inf/piano-gl
+Copyright (c) 2025-2026 dr-inf (Florian Krohs)
+
+mirrored_hall_2k.hdr is "Mirrored Hall" from Poly Haven, CC0.
+https://polyhaven.com/a/mirrored_hall

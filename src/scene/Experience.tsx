@@ -88,7 +88,8 @@ function ToneMap({ exposure }: { exposure: number }) {
 }
 
 function Scene() {
-  const env = environmentById('studio')
+  const environmentId = useAppStore((s) => s.environmentId)
+  const env = environmentById(environmentId)
   const placement = usePlacement()
   const inRoom = Boolean(placement.url)
   const sceneHasLights = useRoomStore((s) => s.sceneHasLights)
@@ -156,6 +157,14 @@ function Scene() {
             )}
             <SceneRoom url={placement.url} />
           </>
+        ) : env.files ? (
+          <Environment
+            key={env.id}
+            files={env.files}
+            background
+            backgroundBlurriness={env.blur}
+            environmentIntensity={env.intensity}
+          />
         ) : (
           <Environment
             key={env.id}

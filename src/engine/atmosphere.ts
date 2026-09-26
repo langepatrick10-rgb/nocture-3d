@@ -1,7 +1,8 @@
 import * as Tone from 'tone'
+import { publicUrl } from '../assetUrl'
 import { connectToOutput, unlockAudio } from './audio'
 
-export type AtmosphereKind = 'off' | 'rain' | 'backrooms' | 'fnaf'
+export type AtmosphereKind = 'off' | 'rain' | 'backrooms' | 'fnaf' | 'fire' | 'chatter' | 'street'
 
 type Bed = {
   stop: () => void
@@ -53,7 +54,7 @@ const slot: Slot = g.__noctureAtmosphere ?? {
 halt(slot)
 g.__noctureAtmosphere = slot
 
-export const ATMOSPHERE_REV = 5
+export const ATMOSPHERE_REV = 13
 
 function ensureMaster(): Tone.Gain {
   if (!slot.master) {
@@ -211,6 +212,67 @@ function makeFnaf(parent: Tone.Gain): Bed {
   }
 }
 
+type LoopClip = {
+  file: string
+  volume: number
+  hp: number | null
+  lp: number | null
+}
+
+function clipUrl(file: string) {
+  return `${publicUrl(file)}?r=${ATMOSPHERE_REV}`
+}
+
+const CLIPS: Record<'fire' | 'chatter' | 'street', LoopClip> = {
+  fire: { file: 'audio/atmosphere/fireplace.mp3', volume: -16, hp: null, lp: null },
+  chatter: { file: 'audio/atmosphere/voices.mp3', volume: -12, hp: 140, lp: 500 },
+  street: { file: 'audio/atmosphere/city.mp3', volume: -16, hp: 80, lp: 2200 },
+}
+
+export function preloadAtmosphereClips(): void {
+  for (const clip of Object.values(CLIPS)) {
+    void Tone.ToneAudioBuffer.fromUrl(clipUrl(clip.file))
+  }
+}
+
+async function makeClip(parent: Tone.Gain, clip: LoopClip): Promise<Bed> {
+  const url = clipUrl(clip.file)
+  const player = new Tone.Player({
+    url,
+    loop: true,
+    fadeIn: 0.7,
+    fadeOut: 0.45,
+  })
+  player.volume.value = clip.volume
+  const nodes: Tone.ToneAudioNode[] = [player]
+  let tail: Tone.ToneAudioNode = player
+  if (clip.hp !== null) {
+    const hp = new Tone.Filter({ frequency: clip.hp, type: 'highpass', Q: 0.4 })
+    tail.connect(hp)
+    nodes.push(hp)
+    tail = hp
+  }
+  if (clip.lp !== null) {
+    const lp = new Tone.Filter({ frequency: clip.lp, type: 'lowpass', Q: 0.45 })
+    tail.connect(lp)
+    nodes.push(lp)
+    tail = lp
+  }
+  tail.connect(parent)
+  await player.load(url)
+  player.start()
+  return {
+    stop() {
+      try {
+        player.stop()
+      } catch {
+        /* already stopped */
+      }
+      for (const node of nodes) node.dispose()
+    },
+  }
+}
+
 export function haltAtmosphere(): void {
   slot.gen += 1
   halt(slot)
@@ -229,16 +291,20 @@ export async function setAtmosphere(next: AtmosphereKind): Promise<void> {
   const out = ensureMaster()
   if (next === slot.kind && slot.bed && slot.appliedRev === ATMOSPHERE_REV) return
   slot.appliedRev = ATMOSPHERE_REV
-  fade(out, 0, slot.kind === 'off' ? 0.05 : 0.35)
-  await new Promise((resolve) => window.setTimeout(resolve, slot.kind === 'off' ? 40 : 360))
-  if (mine !== slot.gen) return
+  silence(slot)
   stopBed(slot)
   slot.kind = next
   try {
     if (next === 'rain') slot.bed = makeRain(out)
     else if (next === 'backrooms') slot.bed = makeBackrooms(out)
-    else slot.bed = makeFnaf(out)
-    fade(out, 1, 1.1)
+    else if (next === 'fire' || next === 'chatter' || next === 'street') {
+      slot.bed = await makeClip(out, CLIPS[next])
+      if (mine !== slot.gen) {
+        stopBed(slot)
+        return
+      }
+    } else slot.bed = makeFnaf(out)
+    fade(out, 1, 0.4)
   } catch {
     stopBed(slot)
     slot.kind = 'off'

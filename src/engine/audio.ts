@@ -64,6 +64,7 @@ let acoustics: RoomAcoustics = getRoomAcoustics('')
 let appliedDecay = acoustics.decay
 let appliedPreDelay = acoustics.preDelay
 let irGen = 0
+let irTimer = 0
 
 function midiFreq(midi: number): string {
   return Tone.Frequency(midi, 'midi').toNote()
@@ -170,7 +171,10 @@ export function setReverbWet(wet: number): void {
 export async function setRoomAcoustics(url: string): Promise<void> {
   acoustics = getRoomAcoustics(url)
   applyRoomTone()
-  await rebuildImpulse()
+  window.clearTimeout(irTimer)
+  irTimer = window.setTimeout(() => {
+    void rebuildImpulse()
+  }, 700)
 }
 
 export async function unlockAudio(): Promise<void> {

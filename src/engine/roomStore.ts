@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { fetchRooms, sortRooms, STUDIO_PLACEMENT, type RoomPlacement } from './roomFiles'
 import { useAppStore } from './store'
+import { isStandardEnvironment } from '../scene/look'
 
 type RoomState = {
   rooms: RoomPlacement[]
@@ -19,7 +20,7 @@ function createRoomStore() {
       if (!incoming) return
       set({ rooms: sortRooms(incoming) })
       const id = useAppStore.getState().environmentId
-      if (id !== 'studio' && !get().rooms.some((room) => room.id === id)) {
+      if (!isStandardEnvironment(id) && !get().rooms.some((room) => room.id === id)) {
         useAppStore.getState().setEnvironmentId('studio')
       }
     },

@@ -1,3 +1,5 @@
+import type { AtmosphereKind } from '../engine/atmosphere'
+
 export type RoomMood = {
   background: string
   fogMode: 'none' | 'linear' | 'exp2'
@@ -243,9 +245,12 @@ export function getRoomAcoustics(url: string): RoomAcoustics {
   return LIVING_ACOUSTICS
 }
 
-export function atmosphereKindFromUrl(url: string): 'off' | 'rain' | 'backrooms' | 'fnaf' {
+export function atmosphereKindFromUrl(url: string): AtmosphereKind {
   if (isRainyStreet(url)) return 'rain'
   if (isBackrooms(url)) return 'backrooms'
   if (isFlashlightHall(url)) return 'fnaf'
+  if (isLivingRoom(url)) return 'fire'
+  if (isVictorian(url)) return 'chatter'
+  if (isJapaneseLoft(url)) return 'street'
   return 'off'
 }

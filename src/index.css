@@ -590,6 +590,13 @@ body,
   font-size: 13px;
 }
 
+.panel select optgroup {
+  background: #12141b;
+  color: var(--muted);
+  font-weight: 650;
+  font-style: normal;
+}
+
 .hint,
 .midi-flag {
   margin: 0;

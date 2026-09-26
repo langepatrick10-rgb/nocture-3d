@@ -1,7 +1,7 @@
 import { useProgress } from '@react-three/drei'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { publicUrl } from '../assetUrl'
-import { ATMOSPHERE_REV, setAtmosphere } from '../engine/atmosphere'
+import { ATMOSPHERE_REV, preloadAtmosphereClips, setAtmosphere } from '../engine/atmosphere'
 import { playFlashlightClick } from '../engine/sfx'
 import { ensureAudio, setReverbWet, setRoomAcoustics } from '../engine/audio'
 import { player } from '../engine/player'
@@ -12,7 +12,7 @@ import { connectWebMidi } from '../engine/webmidi'
 import { isAudioFile } from '../music/audioFiles'
 import { addAudioFiles, addMidiFiles } from '../music/libraryActions'
 import { entryFromStored, isMidiFile, listStoredMidi } from '../music/userLibrary'
-import { PIANOS } from '../scene/look'
+import { PIANOS, ENVIRONMENTS } from '../scene/look'
 import { atmosphereKindFromUrl, isFlashlightHall } from '../scene/roomMood'
 import { SongSelect } from './SongSelect'
 
@@ -180,14 +180,24 @@ export function Overlay() {
   }, [environmentId])
 
   useEffect(() => {
+    preloadAtmosphereClips()
+  }, [])
+
+  useEffect(() => {
     const kind = atmosphereKindFromUrl(atmosphereUrl)
-    void setAtmosphere(kind)
-    void setRoomAcoustics(atmosphereUrl)
+    const start = () => {
+      void setAtmosphere(kind)
+      void setRoomAcoustics(atmosphereUrl)
+    }
+    const id = window.setTimeout(start, 240)
     const resume = () => {
       void setAtmosphere(kind)
     }
     window.addEventListener('pointerdown', resume, { once: true })
-    return () => window.removeEventListener('pointerdown', resume)
+    return () => {
+      window.clearTimeout(id)
+      window.removeEventListener('pointerdown', resume)
+    }
   }, [atmosphereUrl, ATMOSPHERE_REV])
 
   if (pianoLoading && !coverHold) setCoverHold(true)
@@ -555,12 +565,22 @@ export function Overlay() {
                   useAppStore.getState().setEnvironmentId(event.target.value)
                 }}
               >
-                <option value="studio">Studio floor</option>
-                {rooms.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.label}
-                  </option>
-                ))}
+                <optgroup label="Standard">
+                  {ENVIRONMENTS.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.label}
+                    </option>
+                  ))}
+                </optgroup>
+                {rooms.length > 0 ? (
+                  <optgroup label="Custom">
+                    {rooms.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                ) : null}
               </select>
             </label>
           </section>

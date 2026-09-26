@@ -1,0 +1,13 @@
+Drop your high-resolution 3D scenes in this folder.
+
+Name each file whatever you want. That name is the room name in Nocture : 3D.
+
+Accepted files:
+  .glb   (best — one file per scene)
+  .gltf  plus any .bin / texture files that belong with it
+
+When the files are in this folder, come back and tell me OK.
+I will put the piano into each scene. Then use Scene setup in the app to
+move the piano, resize it, and set how far the orbit camera sits.
+
+Click Save in that tool. Those values are what the game uses.

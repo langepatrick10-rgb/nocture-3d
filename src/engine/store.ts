@@ -42,10 +42,10 @@ export type AppState = {
   recording: boolean
   dragOver: boolean
   status: string
-  pianoGltfUrl: string | null
   pianoId: string
   pianoLoading: boolean
   environmentId: string
+  flashlightOn: boolean
   viewMode: ViewMode
   colorMode: ColorMode
   libraryId: string
@@ -76,10 +76,10 @@ export type AppActions = {
   setRecording: (recording: boolean) => void
   setDragOver: (over: boolean) => void
   setStatus: (status: string) => void
-  setPianoGltfUrl: (url: string | null) => void
   setPianoId: (id: string) => void
   setPianoLoading: (loading: boolean) => void
   setEnvironmentId: (id: string) => void
+  setFlashlightOn: (on: boolean) => void
   setViewMode: (mode: ViewMode) => void
   setColorMode: (mode: ColorMode) => void
   setLibraryId: (id: string) => void
@@ -116,10 +116,10 @@ export const useAppStore = create<AppState & AppActions>((set) => ({
   recording: false,
   dragOver: false,
   status: 'Loading piano samples…',
-  pianoGltfUrl: null,
   pianoId: 'c6x',
   pianoLoading: true,
-  environmentId: 'hall',
+  environmentId: 'studio',
+  flashlightOn: false,
   viewMode: 'stage',
   colorMode: 'gold',
   libraryId: 'ode',
@@ -158,20 +158,15 @@ export const useAppStore = create<AppState & AppActions>((set) => ({
   setRecording: (recording) => set({ recording }),
   setDragOver: (dragOver) => set({ dragOver }),
   setStatus: (status) => set({ status }),
-  setPianoGltfUrl: (pianoGltfUrl) =>
-    set((state) => ({
-      pianoGltfUrl,
-      pianoLoading: Boolean(pianoGltfUrl),
-      status: pianoGltfUrl ? 'Loading piano…' : state.status,
-    })),
   setPianoId: (pianoId) =>
     set((state) =>
-      state.pianoId === pianoId && !state.pianoGltfUrl
+      state.pianoId === pianoId
         ? state
-        : { pianoId, pianoGltfUrl: null, pianoLoading: true, status: 'Loading piano…' },
+        : { pianoId, pianoLoading: true, status: 'Loading piano…' },
     ),
   setPianoLoading: (pianoLoading) => set({ pianoLoading }),
   setEnvironmentId: (environmentId) => set({ environmentId }),
+  setFlashlightOn: (flashlightOn) => set({ flashlightOn }),
   setViewMode: (viewMode) => set({ viewMode }),
   setColorMode: (colorMode) => set({ colorMode }),
   setLibraryId: (libraryId) => set({ libraryId }),

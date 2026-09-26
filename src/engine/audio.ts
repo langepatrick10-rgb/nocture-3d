@@ -1,5 +1,7 @@
 import * as Tone from 'tone'
 import { publicUrl } from '../assetUrl'
+import { getRoomAcoustics, type RoomAcoustics } from '../scene/roomMood'
+import { useRoomStore } from './roomStore'
 import { useAppStore } from './store'
 
 const SALAMANDER: Record<string, string> = {
@@ -48,10 +50,20 @@ type Voice = {
 }
 
 let voice: Voice | null = null
+let dryGain: Tone.Gain | null = null
+let wetGain: Tone.Gain | null = null
+let wetHp: Tone.Filter | null = null
+let wetLp: Tone.Filter | null = null
+let slap: Tone.FeedbackDelay | null = null
 let reverb: Tone.Reverb | null = null
 let recordDest: MediaStreamAudioDestinationNode | null = null
 let started = false
 let loadPromise: Promise<void> | null = null
+let userWet = 0.22
+let acoustics: RoomAcoustics = getRoomAcoustics('')
+let appliedDecay = acoustics.decay
+let appliedPreDelay = acoustics.preDelay
+let irGen = 0
 
 function midiFreq(midi: number): string {
   return Tone.Frequency(midi, 'midi').toNote()
@@ -95,8 +107,70 @@ export function getRecordStream(): MediaStream | null {
   return recordDest?.stream ?? null
 }
 
+export function connectToOutput(node: Tone.ToneAudioNode): void {
+  node.toDestination()
+  if (recordDest) node.connect(recordDest)
+}
+
+function mixedWet(): number {
+  return Math.min(0.82, Math.max(0, userWet * acoustics.wetScale))
+}
+
+function toSpeakers(node: Tone.ToneAudioNode): void {
+  node.toDestination()
+  if (recordDest) node.connect(recordDest)
+}
+
+function connectVoice(node: Tone.ToneAudioNode): void {
+  if (!dryGain || !wetHp) {
+    node.toDestination()
+    return
+  }
+  node.connect(dryGain)
+  node.connect(wetHp)
+}
+
+function applyRoomTone(): void {
+  if (wetGain) wetGain.gain.rampTo(mixedWet(), 0.28)
+  if (wetHp) wetHp.frequency.rampTo(acoustics.hp, 0.32)
+  if (wetLp) wetLp.frequency.rampTo(acoustics.lp, 0.32)
+  if (!slap) return
+  slap.delayTime.rampTo(acoustics.slapTime, 0.22)
+  slap.feedback.rampTo(acoustics.slapFeedback, 0.22)
+  slap.wet.rampTo(acoustics.slapWet, 0.22)
+}
+
+function currentRoomUrl(): string {
+  const id = useAppStore.getState().environmentId
+  return useRoomStore.getState().rooms.find((room) => room.id === id)?.url ?? ''
+}
+
+async function rebuildImpulse(): Promise<void> {
+  if (!reverb) return
+  if (
+    Math.abs(appliedDecay - acoustics.decay) < 0.03 &&
+    Math.abs(appliedPreDelay - acoustics.preDelay) < 0.002
+  ) {
+    return
+  }
+  const gen = ++irGen
+  reverb.decay = acoustics.decay
+  reverb.preDelay = acoustics.preDelay
+  await reverb.generate()
+  if (gen !== irGen) return
+  appliedDecay = acoustics.decay
+  appliedPreDelay = acoustics.preDelay
+}
+
 export function setReverbWet(wet: number): void {
-  if (reverb) reverb.wet.value = wet
+  userWet = wet
+  applyRoomTone()
+}
+
+export async function setRoomAcoustics(url: string): Promise<void> {
+  acoustics = getRoomAcoustics(url)
+  applyRoomTone()
+  await rebuildImpulse()
 }
 
 export async function unlockAudio(): Promise<void> {
@@ -121,10 +195,33 @@ async function loadInstrument(): Promise<void> {
   const raw = ctx.rawContext as AudioContext
   recordDest = raw.createMediaStreamDestination()
 
-  reverb = new Tone.Reverb({ decay: 2.8, preDelay: 0.02, wet: 0.22 })
+  userWet = useAppStore.getState().reverb
+  acoustics = getRoomAcoustics(currentRoomUrl())
+
+  dryGain = new Tone.Gain(1)
+  wetHp = new Tone.Filter({ frequency: acoustics.hp, type: 'highpass', Q: 0.55 })
+  wetLp = new Tone.Filter({ frequency: acoustics.lp, type: 'lowpass', Q: 0.65 })
+  reverb = new Tone.Reverb({
+    decay: acoustics.decay,
+    preDelay: acoustics.preDelay,
+    wet: 1,
+  })
+  slap = new Tone.FeedbackDelay({
+    delayTime: acoustics.slapTime,
+    feedback: acoustics.slapFeedback,
+    wet: acoustics.slapWet,
+  })
+  wetGain = new Tone.Gain(mixedWet())
   await reverb.generate()
-  reverb.toDestination()
-  reverb.connect(recordDest)
+  appliedDecay = acoustics.decay
+  appliedPreDelay = acoustics.preDelay
+
+  wetHp.connect(wetLp)
+  wetLp.connect(reverb)
+  reverb.connect(slap)
+  slap.connect(wetGain)
+  toSpeakers(dryGain)
+  toSpeakers(wetGain)
 
   const fallback = () => {
     const synth = new Tone.PolySynth(Tone.Synth, {
@@ -132,7 +229,7 @@ async function loadInstrument(): Promise<void> {
       envelope: { attack: 0.005, decay: 0.2, sustain: 0.35, release: 0.8 },
     })
     synth.maxPolyphony = 64
-    synth.connect(reverb!)
+    connectVoice(synth)
     voice = synthVoice(synth)
     useAppStore.getState().setSamplesReady(true, true)
     useAppStore
@@ -154,7 +251,7 @@ async function loadInstrument(): Promise<void> {
       release: 1.2,
       attack: 0.002,
       onload: () => {
-        sampler.connect(reverb!)
+        connectVoice(sampler)
         voice = samplerVoice(sampler)
         useAppStore.getState().setSamplesReady(true, false)
         useAppStore.getState().setStatus('Piano ready.')

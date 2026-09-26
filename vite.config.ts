@@ -6,6 +6,7 @@ import { defineConfig, type Plugin } from 'vite'
 
 const root = path.dirname(fileURLToPath(import.meta.url))
 const IMPORTS = path.join(root, 'Piano3D Imports')
+const DROP_ROOMS = path.join(root, 'Drop rooms here')
 const TRANSKUN_DIR = path.join(root, 'models/transkun')
 const ORT_DIR = path.join(root, 'node_modules/onnxruntime-web/dist')
 const ORT_FILES = [
@@ -67,6 +68,133 @@ function serveImportedGrands(): Plugin {
           source: fs.readFileSync(filePath),
         })
       }
+    },
+  }
+}
+
+function roomMime(file: string): string {
+  const name = file.toLowerCase()
+  if (name.endsWith('.glb')) return 'model/gltf-binary'
+  if (name.endsWith('.gltf')) return 'model/gltf+json'
+  if (name.endsWith('.json')) return 'application/json'
+  if (name.endsWith('.bin')) return 'application/octet-stream'
+  if (name.endsWith('.png')) return 'image/png'
+  if (name.endsWith('.jpg') || name.endsWith('.jpeg')) return 'image/jpeg'
+  if (name.endsWith('.webp')) return 'image/webp'
+  if (name.endsWith('.ktx2')) return 'image/ktx2'
+  return 'application/octet-stream'
+}
+
+function safeRoomFile(name: string): string | null {
+  let decoded = name
+  try {
+    decoded = decodeURIComponent(name)
+  } catch {
+    return null
+  }
+  if (!decoded || decoded.includes('\0')) return null
+  const abs = path.normalize(path.join(DROP_ROOMS, decoded))
+  const relative = path.relative(DROP_ROOMS, abs)
+  if (!relative || relative.startsWith('..') || path.isAbsolute(relative) || relative.split(/[\\/]/).includes('..')) {
+    return null
+  }
+  return fs.existsSync(abs) && fs.statSync(abs).isFile() ? abs : null
+}
+
+function listDroppedRooms() {
+  if (!fs.existsSync(DROP_ROOMS)) return []
+  return fs
+    .readdirSync(DROP_ROOMS)
+    .filter(
+      (file) =>
+        /\.(glb|gltf)$/i.test(file) &&
+        !/^scary_interior\.(glb|gltf)$/i.test(file) &&
+        !/^modern apartment\.(glb|gltf)$/i.test(file) &&
+        fs.statSync(path.join(DROP_ROOMS, file)).isFile(),
+    )
+    .sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }))
+    .map((file) => {
+      const id = file.replace(/\.(glb|gltf)$/i, '')
+      const jsonPath = path.join(DROP_ROOMS, `${id}.json`)
+      let extra: Record<string, unknown> = {}
+      if (fs.existsSync(jsonPath)) {
+        try {
+          extra = JSON.parse(fs.readFileSync(jsonPath, 'utf8')) as Record<string, unknown>
+        } catch {
+          extra = {}
+        }
+      }
+      const num = (value: unknown, fallback: number) => {
+        const n = typeof value === 'number' ? value : Number(value)
+        return Number.isFinite(n) ? n : fallback
+      }
+      return {
+        id,
+        label: typeof extra.label === 'string' && extra.label.trim() ? extra.label : id,
+        file,
+        url: `/rooms/${encodeURIComponent(file)}`,
+        pianoX: num(extra.pianoX, 0),
+        pianoY: num(extra.pianoY, 0),
+        pianoZ: num(extra.pianoZ, 0),
+        pianoYaw: num(extra.pianoYaw, 0),
+        pianoScale: Math.max(0.1, num(extra.pianoScale, 1)),
+        orbitDistance: Math.max(0.8, num(extra.orbitDistance, 3.2)),
+        orbitYaw: num(extra.orbitYaw, 30),
+        orbitPitch: Math.min(95, Math.max(15, num(extra.orbitPitch, 60))),
+        cameraWindow: Math.min(360, Math.max(20, num(extra.cameraWindow, 360))),
+        cameraWindowY: Math.min(140, Math.max(10, num(extra.cameraWindowY, 70))),
+      }
+    })
+}
+
+function copyDroppedRooms(destRoot: string) {
+  const dest = path.join(destRoot, 'rooms')
+  fs.mkdirSync(dest, { recursive: true })
+  const rooms = listDroppedRooms().map((room) => ({
+    ...room,
+    url: `./rooms/${encodeURIComponent(room.file)}`,
+  }))
+  fs.writeFileSync(path.join(dest, 'manifest.json'), JSON.stringify(rooms, null, 2))
+  if (!fs.existsSync(DROP_ROOMS)) return
+  for (const name of fs.readdirSync(DROP_ROOMS)) {
+    if (name.startsWith('.') || name === 'PUT GLB FILES HERE.txt') continue
+    const from = path.join(DROP_ROOMS, name)
+    if (!fs.statSync(from).isFile()) continue
+    fs.copyFileSync(from, path.join(dest, name))
+  }
+}
+
+function roomsPlugin(): Plugin {
+  return {
+    name: 'dropped-rooms',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const pathname = (req.url ?? '').split('?')[0] ?? ''
+
+        if (req.method === 'GET' && (pathname === '/api/rooms' || pathname === '/rooms/manifest.json')) {
+          res.setHeader('Content-Type', 'application/json')
+          res.setHeader('Cache-Control', 'no-store')
+          res.end(JSON.stringify(listDroppedRooms()))
+          return
+        }
+
+        if (req.method === 'GET' && pathname.startsWith('/rooms/')) {
+          const file = safeRoomFile(pathname.slice('/rooms/'.length))
+          if (!file) {
+            next()
+            return
+          }
+          res.setHeader('Content-Type', roomMime(file))
+          res.setHeader('Cache-Control', 'no-cache')
+          fs.createReadStream(file).pipe(res)
+          return
+        }
+
+        next()
+      })
+    },
+    writeBundle(options) {
+      copyDroppedRooms(options.dir ?? path.join(root, 'dist'))
     },
   }
 }
@@ -150,12 +278,15 @@ function pianoLibraryPlugin(): Plugin {
 
 export default defineConfig({
   base: './',
-  plugins: [react(), serveImportedGrands(), pianoLibraryPlugin()],
+  plugins: [react(), serveImportedGrands(), pianoLibraryPlugin(), roomsPlugin()],
   server: {
     host: true,
     port: 5173,
     fs: {
-      allow: [root, IMPORTS, TRANSKUN_DIR, ORT_DIR],
+      allow: [root, IMPORTS, DROP_ROOMS, TRANSKUN_DIR, ORT_DIR],
+    },
+    watch: {
+      ignored: ['**/Drop rooms here/**'],
     },
   },
   optimizeDeps: {

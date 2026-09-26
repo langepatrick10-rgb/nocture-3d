@@ -1,4 +1,4 @@
-import { Box3, type Mesh, Object3D, Vector3 } from 'three'
+import { Box3, Matrix4, type Mesh, Object3D, Vector3 } from 'three'
 import { FIRST_MIDI, KEY_COUNT, LAST_MIDI, noteName } from '../music/layout'
 
 const MIDI_NAME = /(?:^|[_\s.-])(?:key|note|midi)[_\s.-]*(\d{1,3})$/i
@@ -111,6 +111,12 @@ function isWorldVisible(node: Object3D): boolean {
   return true
 }
 
+const _inv = new Matrix4()
+const _rel = new Matrix4()
+const _piece = new Box3()
+const _size = new Vector3()
+const _center = new Vector3()
+
 export function visibleBox(root: Object3D): Box3 {
   const box = new Box3()
   const piece = new Box3()
@@ -125,14 +131,38 @@ export function visibleBox(root: Object3D): Box3 {
   return box
 }
 
+/** Bounding box in the root's local space, ignoring parent placement. */
+export function localPianoBox(root: Object3D): Box3 {
+  root.updateWorldMatrix(true, true)
+  _inv.copy(root.matrixWorld).invert()
+  const box = new Box3()
+  box.makeEmpty()
+  root.traverse((node) => {
+    const mesh = node as Mesh
+    if (!mesh.isMesh || !isWorldVisible(mesh) || !mesh.geometry) return
+    if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox()
+    const bb = mesh.geometry.boundingBox
+    if (!bb || bb.isEmpty()) return
+    _rel.multiplyMatrices(_inv, mesh.matrixWorld)
+    _piece.copy(bb).applyMatrix4(_rel)
+    if (_piece.isEmpty()) return
+    _piece.getSize(_size)
+    if (_size.y < 0.02 && Math.max(_size.x, _size.z) > 6) return
+    box.union(_piece)
+  })
+  return box
+}
+
 export function fitObjectToWidth(root: Object3D, width: number, floorY = 0): void {
-  let box = visibleBox(root)
-  const size = box.getSize(new Vector3())
-  const span = Math.max(size.x, size.z, 0.001)
-  root.scale.multiplyScalar(width / span)
-  box = visibleBox(root)
-  const center = box.getCenter(new Vector3())
-  root.position.x -= center.x
-  root.position.z -= center.z
-  root.position.y += floorY - box.min.y
+  root.position.set(0, 0, 0)
+  root.scale.set(1, 1, 1)
+  const box = localPianoBox(root)
+  if (box.isEmpty()) return
+  const size = box.getSize(_size)
+  const span = Math.max(size.x, size.z)
+  if (span < 1e-4) return
+  const next = width / span
+  root.scale.setScalar(next)
+  const center = box.getCenter(_center)
+  root.position.set(-center.x * next, -box.min.y * next + floorY, -center.z * next)
 }

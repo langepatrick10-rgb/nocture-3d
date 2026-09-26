@@ -1,7 +1,7 @@
 import { useGLTF } from '@react-three/drei'
 import { useFrame, type ThreeEvent } from '@react-three/fiber'
 import { useEffect, useLayoutEffect, useRef } from 'react'
-import { Color, Texture, Vector3, type Mesh, type MeshStandardMaterial, type Object3D } from 'three'
+import { Color, LinearFilter, LinearMipmapLinearFilter, Mesh, MeshStandardMaterial, Texture, Vector3, type Object3D } from 'three'
 import { noteGen, pressHand, pressSong, pressUser } from '../engine/live'
 import { player } from '../engine/player'
 import { useAppStore } from '../engine/store'
@@ -18,8 +18,8 @@ import {
   splitWhiteBlackKeys,
 } from './splitKeys'
 
-export const DEFAULT_GRAND_URL = publicUrl('models/grand-piano.glb')
-export const MARBLE_GRAND_URL = publicUrl('models/grand-piano-marble.glb')
+export const DEFAULT_GRAND_URL = `${publicUrl('models/grand-piano.glb')}?reset=1`
+export const MARBLE_GRAND_URL = `${publicUrl('models/grand-piano-marble.glb')}?tex=3&reset=1`
 
 const WORLD = new Vector3()
 
@@ -39,15 +39,20 @@ type Prepared = {
   keys?: BoundKey[]
 }
 
-const MAX_TEX = 1024
+const GRAND_FIT_REV = 4
+const COLOR_MAX = 1536
+const OTHER_MAX = 1024
 const MAP_KEYS = ['map', 'normalMap', 'roughnessMap', 'metalnessMap', 'aoMap', 'emissiveMap'] as const
 
-function downscaleTexture(tex: Texture): void {
+function downscaleTexture(tex: Texture, maxSize: number, anisotropy: number): void {
   const img = tex.image as { width?: number; height?: number } | undefined
   if (!img?.width || !img.height) return
-  tex.anisotropy = 1
-  if (img.width <= MAX_TEX && img.height <= MAX_TEX) return
-  const scale = MAX_TEX / Math.max(img.width, img.height)
+  tex.anisotropy = anisotropy
+  tex.minFilter = LinearMipmapLinearFilter
+  tex.magFilter = LinearFilter
+  tex.generateMipmaps = true
+  if (img.width <= maxSize && img.height <= maxSize) return
+  const scale = maxSize / Math.max(img.width, img.height)
   const canvas = document.createElement('canvas')
   canvas.width = Math.max(1, Math.round(img.width * scale))
   canvas.height = Math.max(1, Math.round(img.height * scale))
@@ -71,7 +76,9 @@ function slimTextures(root: Object3D): void {
       const mat = item as MeshStandardMaterial
       for (const key of MAP_KEYS) {
         const tex = mat[key]
-        if (tex) downscaleTexture(tex)
+        if (!tex) continue
+        const color = key === 'map' || key === 'normalMap'
+        downscaleTexture(tex, color ? COLOR_MAX : OTHER_MAX, color ? 4 : 2)
       }
     }
   })
@@ -101,7 +108,7 @@ function materialName(node: Object3D): string {
 }
 
 function isFurniture(node: Object3D): boolean {
-  return /chair|bench|seat|stool/i.test(node.name)
+  return /chair|bench|seat|stool/i.test(`${node.name} ${materialName(node)}`)
 }
 
 function hardenMaterials(root: Object3D, heavy: boolean): void {
@@ -212,25 +219,27 @@ function keyMeshOf(object: Object3D): Mesh | null {
 }
 
 function prepareGrand(root: Object3D, heavy: boolean): BoundKey[] {
+  const leftover = root.getObjectByName('nocture-sustain-pedals')
+  leftover?.removeFromParent()
   const data = root.userData as Prepared
   if (heavy && !data.slimmed) {
     slimTextures(root)
     data.slimmed = true
   }
   applyShadows(root, heavy)
-  if (data.prepared) {
-    restyleBoundKeys(data.keys ?? [])
-    paintNamedKeyMeshes(root)
-    return data.keys ?? []
-  }
-
-  hardenMaterials(root, heavy)
-  let keys = splitWhiteBlackKeys(root)
-  if (keys.length < 70) {
-    const body = findBodyMesh(root)
-    keys = body ? splitC6XKeys(body) : []
+  const ready = Boolean(data.prepared && data.keys && data.keys.length >= 70)
+  if (!ready) {
+    hardenMaterials(root, heavy)
+    let keys = splitWhiteBlackKeys(root)
+    if (keys.length < 70) {
+      const body = findBodyMesh(root)
+      keys = body ? splitC6XKeys(body) : []
+    }
+    data.keys = keys
+    data.prepared = true
   }
   paintNamedKeyMeshes(root)
+  if (ready) restyleBoundKeys(data.keys ?? [])
   root.traverse((node) => {
     if (isFurniture(node)) node.visible = false
   })
@@ -239,9 +248,7 @@ function prepareGrand(root: Object3D, heavy: boolean): BoundKey[] {
     if (isFurniture(node)) node.visible = true
   })
   applyShadows(root, heavy)
-  data.prepared = true
-  data.keys = keys
-  return keys
+  return data.keys ?? []
 }
 
 export function ImportedGrand({ url }: { url: string }) {
@@ -268,10 +275,12 @@ export function ImportedGrand({ url }: { url: string }) {
     glow.current.fill(0)
     for (const mesh of list) restoreRest(mesh)
     setKeyWorldCount(keysRef.current.length)
-    Object.assign(window, { __PIANO_KEYS: keysRef.current.length })
+    Object.assign(window, {
+      __PIANO_KEYS: keysRef.current.length,
+    })
     useAppStore.getState().setPianoLoading(false)
     useAppStore.getState().setStatus('Piano ready.')
-  }, [root, heavy])
+  }, [root, heavy, GRAND_FIT_REV])
 
   useEffect(() => {
     const releasePointer = (event: PointerEvent) => {

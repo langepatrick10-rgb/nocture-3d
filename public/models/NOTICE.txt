@@ -11,3 +11,6 @@ Copyright (c) 2025-2026 dr-inf (Florian Krohs)
 
 mirrored_hall_2k.hdr is "Mirrored Hall" from Poly Haven, CC0.
 https://polyhaven.com/a/mirrored_hall
+
+music_hall_01_4k.hdr is "Music Hall 01" by Sergej Majboroda from Poly Haven, CC0.
+https://polyhaven.com/a/music_hall_01

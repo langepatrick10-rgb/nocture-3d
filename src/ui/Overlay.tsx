@@ -1,15 +1,19 @@
 import { useProgress } from '@react-three/drei'
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { publicUrl } from '../assetUrl'
-import { ensureAudio, setReverbWet } from '../engine/audio'
+import { ATMOSPHERE_REV, setAtmosphere } from '../engine/atmosphere'
+import { playFlashlightClick } from '../engine/sfx'
+import { ensureAudio, setReverbWet, setRoomAcoustics } from '../engine/audio'
 import { player } from '../engine/player'
 import { startRecording, stopRecording } from '../engine/recorder'
+import { useRoomStore } from '../engine/roomStore'
 import { CAMERA_LABELS, useAppStore, type CameraMode } from '../engine/store'
 import { connectWebMidi } from '../engine/webmidi'
 import { isAudioFile } from '../music/audioFiles'
 import { addAudioFiles, addMidiFiles } from '../music/libraryActions'
 import { entryFromStored, isMidiFile, listStoredMidi } from '../music/userLibrary'
-import { ENVIRONMENTS, PIANOS } from '../scene/look'
+import { PIANOS } from '../scene/look'
+import { atmosphereKindFromUrl, isFlashlightHall } from '../scene/roomMood'
 import { SongSelect } from './SongSelect'
 
 const PC_KEYS: Record<string, number> = {
@@ -26,6 +30,11 @@ const PC_KEYS: Record<string, number> = {
   u: 70,
   j: 71,
   k: 72,
+}
+
+function blurMenuSelects(root: HTMLElement | null) {
+  if (!root) return
+  for (const select of root.querySelectorAll('select')) select.blur()
 }
 
 function formatTime(seconds: number): string {
@@ -48,14 +57,6 @@ async function toggleFullscreen(): Promise<boolean> {
   } catch {
     return Boolean(document.fullscreenElement)
   }
-}
-
-function loadPianoModel(file: File): void {
-  const prev = useAppStore.getState().pianoGltfUrl
-  if (prev?.startsWith('blob:')) URL.revokeObjectURL(prev)
-  const url = URL.createObjectURL(file)
-  useAppStore.getState().setPianoGltfUrl(url)
-  useAppStore.getState().setStatus(`Loaded 3D model ${file.name}`)
 }
 
 function Transport() {
@@ -103,7 +104,7 @@ function Transport() {
 }
 
 export function Overlay() {
-  const modelRef = useRef<HTMLInputElement>(null)
+  const menuRef = useRef<HTMLElement>(null)
   const [more, setMore] = useState(false)
   const [sideOpen, setSideOpen] = useState(false)
   const songsOpen = useAppStore((s) => s.songHallOpen)
@@ -125,9 +126,10 @@ export function Overlay() {
   const loopEnd = useAppStore((s) => s.loopEnd)
   const showFallingNotes = useAppStore((s) => s.showFallingNotes)
   const pianoId = useAppStore((s) => s.pianoId)
-  const pianoGltfUrl = useAppStore((s) => s.pianoGltfUrl)
   const pianoLoading = useAppStore((s) => s.pianoLoading)
   const environmentId = useAppStore((s) => s.environmentId)
+  const flashlightOn = useAppStore((s) => s.flashlightOn)
+  const rooms = useRoomStore((s) => s.rooms)
   const reverb = useAppStore((s) => s.reverb)
   const midiDeviceName = useAppStore((s) => s.midiDeviceName)
   const recording = useAppStore((s) => s.recording)
@@ -136,6 +138,7 @@ export function Overlay() {
   const transcribeJob = useAppStore((s) => s.transcribeJob)
 
   useEffect(() => {
+    void useRoomStore.getState().refreshRooms()
     void connectWebMidi()
     void ensureAudio()
     void listStoredMidi()
@@ -158,10 +161,8 @@ export function Overlay() {
       const files = [...(event.dataTransfer?.files ?? [])]
       const midis = files.filter(isMidiFile)
       const audios = files.filter(isAudioFile)
-      const model = files.find((file) => /\.(glb|gltf)$/i.test(file.name))
       if (midis.length) void addMidiFiles(midis)
       if (audios.length) void addAudioFiles(audios)
-      if (model) loadPianoModel(model)
     }
     window.addEventListener('dragover', onOver)
     window.addEventListener('drop', onDrop)
@@ -172,11 +173,29 @@ export function Overlay() {
     }
   }, [])
 
+  const atmosphereUrl = rooms.find((room) => room.id === environmentId)?.url ?? ''
+
+  useEffect(() => {
+    if (isFlashlightHall(atmosphereUrl)) useAppStore.getState().setFlashlightOn(false)
+  }, [environmentId])
+
+  useEffect(() => {
+    const kind = atmosphereKindFromUrl(atmosphereUrl)
+    void setAtmosphere(kind)
+    void setRoomAcoustics(atmosphereUrl)
+    const resume = () => {
+      void setAtmosphere(kind)
+    }
+    window.addEventListener('pointerdown', resume, { once: true })
+    return () => window.removeEventListener('pointerdown', resume)
+  }, [atmosphereUrl, ATMOSPHERE_REV])
+
   if (pianoLoading && !coverHold) setCoverHold(true)
   const showCover = pianoLoading || coverHold
 
   useEffect(() => {
     if (pianoLoading) {
+      blurMenuSelects(menuRef.current)
       setMore(false)
       setSideOpen(false)
       useAppStore.getState().setSongHallOpen(false)
@@ -195,18 +214,24 @@ export function Overlay() {
       if (!useAppStore.getState().pianoLoading) setCoverHold(false)
     }, 90000)
     return () => window.clearTimeout(id)
-  }, [pianoId, pianoGltfUrl])
+  }, [pianoId, environmentId])
+
+  useEffect(() => {
+    setCoverHold(true)
+  }, [environmentId])
 
   useEffect(() => {
     const closeMenus = (event: PointerEvent) => {
       const node = event.target
       if (!(node instanceof Element)) return
       if (node.closest('.hud-menu') || node.closest('.hud-side') || node.closest('.song-select')) return
+      blurMenuSelects(menuRef.current)
       setMore(false)
       setSideOpen(false)
     }
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
+        blurMenuSelects(menuRef.current)
         setSongsOpen(false)
         setMore(false)
         setSideOpen(false)
@@ -245,6 +270,11 @@ export function Overlay() {
         else void player.toggle()
         return
       }
+      if (event.code === 'ShiftLeft' || event.code === 'ShiftRight') {
+        event.preventDefault()
+        player.setSustain(true)
+        return
+      }
       if (event.key === 'F11') {
         event.preventDefault()
         if (!window.pianoDesktop) void toggleFullscreen().then(setFullscreen)
@@ -262,6 +292,9 @@ export function Overlay() {
     }
     const onKeyUp = (event: KeyboardEvent) => {
       down.delete(event.key)
+      if (event.code === 'ShiftLeft' || event.code === 'ShiftRight') {
+        player.setSustain(false)
+      }
       const midi = PC_KEYS[event.key.toLowerCase()]
       if (midi !== undefined) player.userNoteOff(midi)
     }
@@ -272,6 +305,7 @@ export function Overlay() {
       }
       down.clear()
       player.releaseAllUser()
+      player.setSustain(false)
     }
     window.addEventListener('keydown', onKeyDown)
     window.addEventListener('keyup', onKeyUp)
@@ -429,6 +463,28 @@ export function Overlay() {
         </div>
       </nav>
 
+      {viewMode === 'stage' && isFlashlightHall(rooms.find((room) => room.id === environmentId)?.url ?? '') ? (
+        <button
+          type="button"
+          className={`hud-flash${flashlightOn ? ' is-on' : ''}`}
+          title={flashlightOn ? 'Flashlight on' : 'Flashlight off'}
+          aria-label="Flashlight"
+          aria-pressed={flashlightOn}
+          onClick={() => {
+            const next = !useAppStore.getState().flashlightOn
+            void playFlashlightClick(next)
+            useAppStore.getState().setFlashlightOn(next)
+          }}
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M3 10.2h9.2v3.6H3c-.6 0-1-.4-1-1v-1.6c0-.6.4-1 1-1zm10.4-2.4 8.2-2.2c.5-.1.9.2.9.7v10.4c0 .5-.4.8-.9.7l-8.2-2.2V7.8z"
+            />
+          </svg>
+        </button>
+      ) : null}
+
       <div className="hud-left">
       <button
         type="button"
@@ -442,8 +498,14 @@ export function Overlay() {
         <small>{song.name}</small>
       </button>
       <nav
+        ref={menuRef}
         className={`hud-menu${more ? ' is-open' : ''}`}
-        onPointerLeave={() => setMore(false)}
+        onPointerLeave={() => {
+          const active = document.activeElement
+          if (active instanceof HTMLSelectElement && menuRef.current?.contains(active)) return
+          blurMenuSelects(menuRef.current)
+          setMore(false)
+        }}
       >
         <button
           type="button"
@@ -466,11 +528,11 @@ export function Overlay() {
             <label>
               Piano
               <select
-                value={pianoGltfUrl ? 'custom' : pianoId}
+                value={pianoId}
                 onChange={(event) => {
                   const id = event.target.value
-                  if (id === 'custom') return
                   setCoverHold(true)
+                  event.currentTarget.blur()
                   setMore(false)
                   useAppStore.getState().setPianoId(id)
                 }}
@@ -480,25 +542,27 @@ export function Overlay() {
                     {item.label}
                   </option>
                 ))}
-                {pianoGltfUrl ? <option value="custom">Dropped GLB</option> : null}
               </select>
             </label>
             <label>
               Room
               <select
                 value={environmentId}
-                onChange={(event) => useAppStore.getState().setEnvironmentId(event.target.value)}
+                onChange={(event) => {
+                  setCoverHold(true)
+                  event.currentTarget.blur()
+                  setMore(false)
+                  useAppStore.getState().setEnvironmentId(event.target.value)
+                }}
               >
-                {ENVIRONMENTS.map((item) => (
+                <option value="studio">Studio floor</option>
+                {rooms.map((item) => (
                   <option key={item.id} value={item.id}>
                     {item.label}
                   </option>
                 ))}
               </select>
             </label>
-            <button type="button" className="quiet" onClick={() => modelRef.current?.click()}>
-              Load GLB
-            </button>
           </section>
 
           <section>
@@ -637,18 +701,6 @@ export function Overlay() {
           <span className="midi-flag">
             {midiDeviceName ? `MIDI · ${midiDeviceName}` : 'Drop MIDI or MP3, or open Song Hall'}
           </span>
-
-          <input
-            ref={modelRef}
-            type="file"
-            accept=".glb,.gltf"
-            hidden
-            onChange={(event) => {
-              const file = event.target.files?.[0]
-              if (file) loadPianoModel(file)
-              event.target.value = ''
-            }}
-          />
         </aside>
       </nav>
       </div>

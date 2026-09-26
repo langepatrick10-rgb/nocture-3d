@@ -6,7 +6,7 @@ A 3D piano for Windows. Play MIDI files, search songs online, drop in MP3s to tr
 
 Friends only need the installer — not this source code.
 
-**[Download Nocture-3D-Setup.exe](https://github.com/langepatrick10-rgb/nocture-3d/releases/latest/download/Nocture-3D-Setup.exe)** (~500 MB)
+**[Download Nocture-3D-Setup.exe](https://github.com/langepatrick10-rgb/nocture-3d/releases/latest/download/Nocture-3D-Setup.exe)** (~530 MB)
 
 1. Double-click the file.
 2. If Windows says *Windows protected your PC*, choose **More info** → **Run anyway**.

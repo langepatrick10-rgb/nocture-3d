@@ -2,7 +2,7 @@ import { player } from '../engine/player'
 import { useAppStore } from '../engine/store'
 import { LIBRARY, forgetSong, loadLibrarySong, type LibraryEntry } from './library'
 import { isAudioFile } from './audioFiles'
-import { fetchOnlineMidi, type OnlineMidiHit } from './onlineMidi'
+import type { OnlineMidiHit } from './onlineMidi'
 import { rememberPlayed, forgetRecent } from './recent'
 import {
   deleteStoredMidi,
@@ -66,6 +66,7 @@ export async function addAudioFiles(files: File[]): Promise<void> {
         title,
         composer: 'Transcribed',
         id: userMidiId(`audio-${file.name}`),
+        source: 'transcribe',
       })
       if (entry) entries.push(entry)
     }
@@ -87,21 +88,21 @@ export async function addAudioFiles(files: File[]): Promise<void> {
 }
 
 export async function addOnlineHit(hit: OnlineMidiHit): Promise<LibraryEntry | null> {
+  const entry: LibraryEntry = {
+    id: userMidiId(hit.midiUrl),
+    title: hit.title,
+    composer: hit.composer || 'Online',
+    genre: 'Yours',
+    kind: 'online',
+    midiUrl: hit.midiUrl,
+  }
   try {
     useAppStore.getState().setStatus(`Downloading ${hit.title}…`)
-    const bytes = await fetchOnlineMidi(hit.midiUrl)
-    const entry = await importMidiBuffer(bytes, `${hit.title}.mid`, {
-      title: hit.title,
-      composer: hit.composer,
-      id: userMidiId(hit.midiUrl),
-    })
-    await addImportedEntries(
-      entry ? [entry] : [],
-      `Added ${hit.title}`,
-    )
+    forgetSong(entry.id)
+    await loadLibrary(entry, `Playing ${hit.title}`)
     return entry
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Could not add that MIDI'
+    const message = error instanceof Error ? error.message : 'Could not play that MIDI'
     useAppStore.getState().setStatus(message)
     return null
   }

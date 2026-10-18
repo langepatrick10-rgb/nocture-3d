@@ -30,6 +30,17 @@ function matches(entry: { title: string; composer: string; genre?: string }, que
 }
 
 function recentToEntry(item: RecentEntry, yours: LibraryEntry[]): LibraryEntry | null {
+  if (item.kind === 'online') {
+    if (!item.midiUrl) return null
+    return {
+      id: item.id,
+      title: item.title,
+      composer: item.composer,
+      genre: 'Yours',
+      kind: 'online',
+      midiUrl: item.midiUrl,
+    }
+  }
   if (item.kind === 'user') return yours.find((entry) => entry.id === item.id) ?? null
   return concertLibrary().find((entry) => entry.id === item.id) ?? null
 }

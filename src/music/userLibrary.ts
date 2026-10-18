@@ -5,6 +5,8 @@ const DB_NAME = 'piano3d'
 const STORE = 'user-midi'
 const VERSION = 1
 
+export type StoredMidiSource = 'drop' | 'transcribe'
+
 export type StoredMidi = {
   id: string
   title: string
@@ -12,6 +14,19 @@ export type StoredMidi = {
   fileName: string
   addedAt: number
   bytes: ArrayBuffer
+  /** Dropped MIDI or transcribed MP3 only — online search is never stored here. */
+  source?: StoredMidiSource
+}
+
+/** Online search used hashed ids; dropped files use `user-{slug}` without a hash suffix. */
+function looksLikeOnlineImport(record: StoredMidi): boolean {
+  if (record.source === 'drop' || record.source === 'transcribe') return false
+  if (record.composer === 'Transcribed') return false
+  return /^user-.+-[0-9a-f]{6,}$/i.test(record.id)
+}
+
+export function isLibraryStoredMidi(record: StoredMidi): boolean {
+  return !looksLikeOnlineImport(record)
 }
 
 function openDb(): Promise<IDBDatabase> {
@@ -78,7 +93,31 @@ export async function listStoredMidi(): Promise<StoredMidi[]> {
   const db = await openDb()
   try {
     const records = await wait(db.transaction(STORE, 'readonly').objectStore(STORE).getAll())
-    return (records as StoredMidi[]).sort((a, b) => b.addedAt - a.addedAt)
+    return (records as StoredMidi[])
+      .filter(isLibraryStoredMidi)
+      .sort((a, b) => b.addedAt - a.addedAt)
+  } finally {
+    db.close()
+  }
+}
+
+/** Remove online-search leftovers that were wrongly saved into Your library. */
+export async function purgeOnlineFromLibrary(): Promise<number> {
+  const db = await openDb()
+  try {
+    const records = (await wait(
+      db.transaction(STORE, 'readonly').objectStore(STORE).getAll(),
+    )) as StoredMidi[]
+    const junk = records.filter(looksLikeOnlineImport)
+    if (!junk.length) return 0
+    const tx = db.transaction(STORE, 'readwrite')
+    const store = tx.objectStore(STORE)
+    for (const record of junk) store.delete(record.id)
+    await new Promise<void>((resolve, reject) => {
+      tx.oncomplete = () => resolve()
+      tx.onerror = () => reject(tx.error ?? new Error('Could not purge online imports'))
+    })
+    return junk.length
   } finally {
     db.close()
   }
@@ -116,7 +155,7 @@ export async function deleteStoredMidi(id: string): Promise<void> {
 export async function importMidiBuffer(
   bytes: ArrayBuffer,
   fileName: string,
-  extra?: { title?: string; composer?: string; id?: string },
+  extra?: { title?: string; composer?: string; id?: string; source?: StoredMidiSource },
 ): Promise<LibraryEntry | null> {
   const parsed = await parseMidiArrayBuffer(bytes.slice(0), fileName)
   if (!parsed.notes.length) return null
@@ -128,6 +167,7 @@ export async function importMidiBuffer(
     fileName,
     addedAt: Date.now(),
     bytes: bytes.slice(0),
+    source: extra?.source ?? 'drop',
   }
   await saveStoredMidi(record)
   return entryFromStored(record)
@@ -137,7 +177,7 @@ export async function importUserMidiFiles(files: File[]): Promise<LibraryEntry[]
   const entries: LibraryEntry[] = []
   for (const file of files) {
     if (!isMidiFile(file)) continue
-    const entry = await importMidiBuffer(await file.arrayBuffer(), file.name)
+    const entry = await importMidiBuffer(await file.arrayBuffer(), file.name, { source: 'drop' })
     if (entry) entries.push(entry)
   }
   return entries

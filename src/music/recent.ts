@@ -6,8 +6,9 @@ export type RecentEntry = {
   title: string
   composer: string
   genre: string
-  kind: 'builtin' | 'midi' | 'user'
+  kind: 'builtin' | 'midi' | 'user' | 'online'
   playedAt: number
+  midiUrl?: string
 }
 
 function emit(): void {
@@ -29,10 +30,19 @@ export function rememberPlayed(entry: {
   title: string
   composer: string
   genre: string
-  kind: 'builtin' | 'midi' | 'user'
+  kind: 'builtin' | 'midi' | 'user' | 'online'
+  midiUrl?: string
 }): void {
   const next = [
-    { ...entry, playedAt: Date.now() },
+    {
+      id: entry.id,
+      title: entry.title,
+      composer: entry.composer,
+      genre: entry.genre,
+      kind: entry.kind,
+      midiUrl: entry.midiUrl,
+      playedAt: Date.now(),
+    },
     ...readRecent().filter((item) => item.id !== entry.id),
   ].slice(0, MAX)
   localStorage.setItem(KEY, JSON.stringify(next))

@@ -1,4 +1,5 @@
 import { DEMO_SONGS } from './demos'
+import { fetchOnlineMidi } from './onlineMidi'
 import { buildSong, type ParsedSong, type SongNote } from './song'
 import libraryData from './library-data.json'
 import { parseMidiArrayBuffer } from './parseMidi'
@@ -9,7 +10,9 @@ export type LibraryEntry = {
   title: string
   composer: string
   genre: 'Practice' | 'Classical' | 'Yours'
-  kind: 'builtin' | 'midi' | 'user'
+  kind: 'builtin' | 'midi' | 'user' | 'online'
+  /** Present for online search plays — used to re-fetch, never stored in Your library. */
+  midiUrl?: string
 }
 
 type RawSong = {
@@ -84,6 +87,14 @@ export async function loadLibrarySong(entry: LibraryEntry): Promise<ParsedSong> 
     const rec = await getStoredMidi(entry.id)
     if (!rec?.bytes) throw new Error(`Missing imported song ${entry.title}`)
     const parsed = await parseMidiArrayBuffer(rec.bytes.slice(0), rec.fileName)
+    const song = buildSong(displayName(entry), parsed.notes)
+    cache.set(entry.id, song)
+    return song
+  }
+  if (entry.kind === 'online') {
+    if (!entry.midiUrl) throw new Error(`Missing online URL for ${entry.title}`)
+    const bytes = await fetchOnlineMidi(entry.midiUrl)
+    const parsed = await parseMidiArrayBuffer(bytes, `${entry.title}.mid`)
     const song = buildSong(displayName(entry), parsed.notes)
     cache.set(entry.id, song)
     return song

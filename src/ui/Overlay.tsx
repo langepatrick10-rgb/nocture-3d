@@ -11,7 +11,7 @@ import { CAMERA_LABELS, useAppStore, type CameraMode } from '../engine/store'
 import { connectWebMidi } from '../engine/webmidi'
 import { isAudioFile } from '../music/audioFiles'
 import { addAudioFiles, addMidiFiles } from '../music/libraryActions'
-import { entryFromStored, isMidiFile, listStoredMidi } from '../music/userLibrary'
+import { entryFromStored, isMidiFile, listStoredMidi, purgeOnlineFromLibrary } from '../music/userLibrary'
 import { PIANOS, ENVIRONMENTS } from '../scene/look'
 import { atmosphereKindFromUrl, isFlashlightHall } from '../scene/roomMood'
 import { SongSelect } from './SongSelect'
@@ -141,7 +141,9 @@ export function Overlay() {
     void useRoomStore.getState().refreshRooms()
     void connectWebMidi()
     void ensureAudio()
-    void listStoredMidi()
+    void purgeOnlineFromLibrary()
+      .catch(() => 0)
+      .then(() => listStoredMidi())
       .then((records) => useAppStore.getState().setUserLibrary(records.map(entryFromStored)))
       .catch(() => undefined)
 
